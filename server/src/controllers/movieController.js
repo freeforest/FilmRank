@@ -1,4 +1,134 @@
 import pool from "../db/pool.js";
+import { searchTmdbMovies, getTmdbGenreMap, buildTmdbPosterUrl } from "../services/tmdb.js";
+
+const DEFAULT_TMDB_CACHE_DAYS = 30;
+
+function getTmdbCacheDays() {
+  const raw = Number(process.env.TMDB_CACHE_DAYS);
+  if (Number.isFinite(raw) && raw > 0) {
+    return raw;
+  }
+  return DEFAULT_TMDB_CACHE_DAYS;
+}
+
+async function cleanupOldTmdbMovies() {
+  const days = getTmdbCacheDays();
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  await pool.query(
+    `DELETE m FROM movies m
+     LEFT JOIN ratings r ON m.movie_id = r.movie_id
+     LEFT JOIN reviews rv ON m.movie_id = rv.movie_id
+     LEFT JOIN watch_history w ON m.movie_id = w.movie_id
+     WHERE m.source = 'tmdb'
+       AND m.last_fetched_at IS NOT NULL
+       AND m.last_fetched_at < ?
+       AND r.movie_id IS NULL
+       AND rv.movie_id IS NULL
+       AND w.movie_id IS NULL`,
+    [cutoff]
+  );
+}
+
+async function ensureGenresByName(names) {
+  if (!names.length) {
+    return new Map();
+  }
+  const valuesSql = names.map(() => "(?)").join(", ");
+  await pool.query(`INSERT IGNORE INTO genres (name) VALUES ${valuesSql}`, names);
+  const placeholders = names.map(() => "?").join(", ");
+  const [rows] = await pool.query(
+    `SELECT genre_id, name FROM genres WHERE name IN (${placeholders})`,
+    names
+  );
+  const map = new Map();
+  for (const row of rows) {
+    map.set(row.name, row.genre_id);
+  }
+  return map;
+}
+
+async function upsertTmdbMovies(tmdbMovies, language) {
+  if (!tmdbMovies.length) {
+    return [];
+  }
+  const genreMap = await getTmdbGenreMap(language);
+  const now = new Date();
+  const genreNames = new Set();
+  for (const movie of tmdbMovies) {
+    if (Array.isArray(movie.genre_ids)) {
+      for (const gid of movie.genre_ids) {
+        const name = genreMap.get(gid);
+        if (name) {
+          genreNames.add(name);
+        }
+      }
+    }
+  }
+  const genreIdByName = await ensureGenresByName([...genreNames]);
+  const savedIds = [];
+
+  for (const movie of tmdbMovies) {
+    const releaseDate = movie.release_date || null;
+    const year = releaseDate ? Number(releaseDate.slice(0, 4)) : null;
+    const posterUrl = buildTmdbPosterUrl(movie.poster_path);
+    const [result] = await pool.query(
+      `INSERT INTO movies
+        (tmdb_id, title, original_title, release_date, year, runtime_minutes, language, country, description, poster_url, source, last_fetched_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tmdb', ?, 'active')
+       ON DUPLICATE KEY UPDATE
+         title = VALUES(title),
+         original_title = VALUES(original_title),
+         release_date = VALUES(release_date),
+         year = VALUES(year),
+         language = VALUES(language),
+         description = VALUES(description),
+         poster_url = VALUES(poster_url),
+         last_fetched_at = VALUES(last_fetched_at),
+         status = 'active',
+         movie_id = LAST_INSERT_ID(movie_id)`,
+      [
+        movie.id,
+        movie.title || movie.original_title || "Unknown",
+        movie.original_title || null,
+        releaseDate,
+        Number.isFinite(year) ? year : null,
+        null,
+        movie.original_language || null,
+        null,
+        movie.overview || null,
+        posterUrl,
+        now
+      ]
+    );
+
+    const movieId = result.insertId;
+    savedIds.push(movieId);
+
+    await pool.query("DELETE FROM movie_genres WHERE movie_id = ?", [movieId]);
+    if (Array.isArray(movie.genre_ids)) {
+      for (const gid of movie.genre_ids) {
+        const name = genreMap.get(gid);
+        const localId = name ? genreIdByName.get(name) : null;
+        if (localId) {
+          await pool.query(
+            "INSERT IGNORE INTO movie_genres (movie_id, genre_id) VALUES (?, ?)",
+            [movieId, localId]
+          );
+        }
+      }
+    }
+  }
+
+  if (!savedIds.length) {
+    return [];
+  }
+  const placeholders = savedIds.map(() => "?").join(", ");
+  const [rows] = await pool.query(
+    `SELECT m.* FROM movies m WHERE m.movie_id IN (${placeholders})`,
+    savedIds
+  );
+  return rows;
+}
 
 export async function listMovies(req, res, next) {
   try {
@@ -60,6 +190,15 @@ export async function listMovies(req, res, next) {
     }
 
     const [rows] = await pool.query(sql, params);
+
+    if (q && rows.length === 0) {
+      const tmdbLanguage = language || process.env.TMDB_LANGUAGE || "zh-CN";
+      const tmdbMovies = await searchTmdbMovies({ query: q, year, language: tmdbLanguage });
+      const savedRows = await upsertTmdbMovies(tmdbMovies, tmdbLanguage);
+      await cleanupOldTmdbMovies();
+      return res.json(savedRows);
+    }
+
     return res.json(rows);
   } catch (err) {
     return next(err);

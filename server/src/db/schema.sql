@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS movies (
   movie_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tmdb_id BIGINT NULL,
   title VARCHAR(200) NOT NULL,
   original_title VARCHAR(200) NULL,
   release_date DATE NULL,
@@ -23,12 +24,16 @@ CREATE TABLE IF NOT EXISTS movies (
   country VARCHAR(50) NULL,
   description TEXT NULL,
   poster_url VARCHAR(500) NULL,
+  source ENUM('local','tmdb') DEFAULT 'local',
+  last_fetched_at DATETIME NULL,
   status ENUM('active','inactive') DEFAULT 'active',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_movies_tmdb(tmdb_id),
   INDEX idx_movies_title(title),
   INDEX idx_movies_year(year),
-  INDEX idx_movies_release(release_date)
+  INDEX idx_movies_release(release_date),
+  INDEX idx_movies_source_fetched(source, last_fetched_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS genres (
@@ -111,7 +116,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
   batch_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
   movie_id BIGINT NOT NULL,
-  rank INT NOT NULL,
+  `rank` INT NOT NULL,
   score DOUBLE NOT NULL,
   reason VARCHAR(255) NULL,
   PRIMARY KEY (batch_id, user_id, movie_id),

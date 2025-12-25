@@ -24,6 +24,10 @@ services:
       DB_PASSWORD: filmrank_root
       DB_NAME: filmrank
       JWT_SECRET: change-me
+      TMDB_API_KEY: ${TMDB_API_KEY}
+      TMDB_READ_ACCESS_TOKEN: ${TMDB_READ_ACCESS_TOKEN}
+      TMDB_LANGUAGE: ${TMDB_LANGUAGE:-zh-CN}
+      TMDB_CACHE_DAYS: ${TMDB_CACHE_DAYS:-30}
     ports:
       - "3000:3000"
     depends_on:
