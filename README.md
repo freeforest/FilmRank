@@ -40,3 +40,12 @@ Full-stack FilmRank project using Node.js + Express + MySQL with a Vue 3 fronten
 - Movies: `GET /api/movies`, `GET /api/movies/:id`
 - Recommendations: `GET /api/recommendations`
 - Admin generate batch: `POST /api/admin/recommendations/generate`
+
+## Docker (x86)
+1) Build images and start containers:
+   - `docker compose up -d --build`
+2) Initialize schema:
+   - `docker exec -i filmrank-db mysql -uroot -pfilmrank_root filmrank < server/src/db/schema.sql`
+3) Open:
+   - Frontend: `http://<server-ip>/`
+   - Backend: `http://<server-ip>:3000/health`

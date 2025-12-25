@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8
+    container_name: filmrank-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: filmrank_root
+      MYSQL_DATABASE: filmrank
+    ports:
+      - "3306:3306"
+    volumes:
+      - filmrank_db:/var/lib/mysql
+
+  server:
+    build: ./server
+    container_name: filmrank-server
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: filmrank_root
+      DB_NAME: filmrank
+      JWT_SECRET: change-me
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+
+  client:
+    build: ./client
+    container_name: filmrank-client
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE: http://localhost:3000
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+volumes:
+  filmrank_db:
