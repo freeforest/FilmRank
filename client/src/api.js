@@ -37,8 +37,11 @@ export const api = {
   listGenres: () => request("/api/genres"),
   rateMovie: (payload) => request("/api/ratings", { method: "POST", body: JSON.stringify(payload) }),
   createReview: (payload) => request("/api/reviews", { method: "POST", body: JSON.stringify(payload) }),
+  updateReview: (id, payload) => request(`/api/reviews/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteReview: (id) => request(`/api/reviews/${id}`, { method: "DELETE" }),
   listRecommendations: (algorithm) => request(`/api/recommendations${algorithm ? `?algorithm=${algorithm}` : ""}`),
   startWatch: (payload) => request("/api/watch", { method: "POST", body: JSON.stringify(payload) }),
+  listWatchHistory: () => request("/api/watch/history"),
   admin: {
     createMovie: (payload) => request("/api/movies", { method: "POST", body: JSON.stringify(payload) }),
     updateMovie: (id, payload) => request(`/api/movies/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
@@ -47,6 +50,7 @@ export const api = {
     updateGenre: (id, payload) => request(`/api/genres/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
     listUsers: (q) => request(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
     setUserStatus: (id, status) => request(`/api/admin/users/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
+    setReviewStatus: (id, status) => request(`/api/reviews/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
     setRatingPolicy: (payload) => request("/api/admin/rating-policy", { method: "POST", body: JSON.stringify(payload) }),
     generateBatch: (payload) => request("/api/admin/recommendations/generate", { method: "POST", body: JSON.stringify(payload) })
   }
